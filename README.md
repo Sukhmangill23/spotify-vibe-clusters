@@ -38,4 +38,10 @@ JPA, PostgreSQL, JUnit 5 + Mockito, springdoc-openapi.
 
 ## Status
 
-Work in progress — see commit history for build order.
+Core scaffold complete: OAuth2 login, batched ingestion, from-scratch
+k-means clustering with silhouette-based k selection, cosine-similarity
+recommendations, and unit tests for the clustering/similarity/token
+logic. Numbers in the resume writeup (tracks ingested, API call
+reduction, silhouette score, recommendation latency) come from running
+this against a real Spotify library — see IngestionService and
+ClusteringService for where each is computed.

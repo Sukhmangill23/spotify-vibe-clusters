@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/vibeclusters
+    username: postgres
+    password: your_local_password
+  security:
+    oauth2:
+      client:
+        registration:
+          spotify:
+            client-id: your_spotify_client_id
+            client-secret: your_spotify_client_secret
+
+# Copy this file to application-local.yml (gitignored) and fill in real
+# values, or set the equivalent environment variables:
+#   DB_USERNAME, DB_PASSWORD, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
