@@ -5,7 +5,8 @@ import com.svc.repository.UserRepository;
 import com.svc.service.IngestionService;
 import com.svc.service.TokenRefreshService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -23,7 +24,7 @@ public class IngestController {
         this.ingestionService = ingestionService;
     }
 
-    @PostMapping("/api/ingest")
+    @RequestMapping(value = "/api/ingest", method = {RequestMethod.GET, RequestMethod.POST})
     public IngestionService.IngestionResult ingest(OAuth2AuthenticationToken authToken) {
         String spotifyId = authToken.getPrincipal().getName();
         User user = userRepository.findById(spotifyId)
