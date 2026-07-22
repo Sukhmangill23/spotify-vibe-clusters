@@ -13,4 +13,5 @@ public interface TrackRepository extends JpaRepository<Track, Long> {
     Optional<Track> findBySpotifyTrackIdAndOwnerId(String spotifyTrackId, String ownerId);
 
     long countByOwnerId(String ownerId);
+    void deleteByOwnerId(String ownerId);
 }
