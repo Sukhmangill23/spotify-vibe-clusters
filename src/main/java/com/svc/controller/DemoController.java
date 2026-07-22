@@ -36,7 +36,7 @@ public class DemoController {
     }
 
     @RequestMapping(value = "/import", method = {RequestMethod.GET, RequestMethod.POST})
-    public DatasetImportService.ImportResult importSample(@RequestParam(defaultValue = "5000") int limit) {
+    public com.svc.service.ImportResult importSample(@RequestParam(defaultValue = "5000") int limit) {
         return datasetImportService.importSample(limit);
     }
 
@@ -52,10 +52,7 @@ public class DemoController {
 
     @GetMapping("/clusters/{id}/tracks")
     public List<Track> tracksInCluster(@PathVariable Long id) {
-        List<TrackClusterAssignment> assignments = assignmentRepository.findByClusterId(id);
-        return assignments.stream()
-                .map(TrackClusterAssignment::getTrack)
-                .collect(Collectors.toList());
+        return assignmentRepository.findTracksByClusterId(id);
     }
 
     @GetMapping("/tracks/{id}/similar")

@@ -40,11 +40,8 @@ public class ClusterController {
         return clusterRepository.findByOwnerId(ownerId);
     }
 
-    @GetMapping("/{id}/tracks")
+@GetMapping("/{id}/tracks")
     public List<Track> tracksInCluster(@PathVariable Long id) {
-        List<TrackClusterAssignment> assignments = assignmentRepository.findByClusterId(id);
-        return assignments.stream()
-                .map(TrackClusterAssignment::getTrack)
-                .collect(Collectors.toList());
+        return assignmentRepository.findTracksByClusterId(id);
     }
 }
