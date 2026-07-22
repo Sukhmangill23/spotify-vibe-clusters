@@ -12,30 +12,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Spotify deprecated the /audio-features endpoint for all apps created after
- * November 27, 2024 (permanent 403, no official replacement). This service
- * substitutes a public dataset of ~62k tracks with the same audio-feature
- * columns Spotify used to expose, matched to a user's library by normalized
- * track name + primary artist.
- *
- * This is a fuzzy join, not an exact one: streaming service IDs aren't
- * available for arbitrary public datasets, so name+artist matching is the
- * practical join key. matchRate() reports how much of a user's real library
- * this actually covers, which is the honest number to put on a resume rather
- * than assuming 100% coverage.
- */
 @Service
 public class DatasetAudioFeatureService {
 
-    private final Map<String, AudioFeaturesDTO> byNormalizedKey = new HashMap<>();
+    private final Map<String, AudioFeaturesDTO> byNameAndArtist = new HashMap<>();
+    private final Map<String, AudioFeaturesDTO> byNameOnly = new HashMap<>();
+    private final Map<String, Integer> nameOnlyCollisionCount = new HashMap<>();
 
     @PostConstruct
     public void loadDataset() {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 new ClassPathResource("data/spotify_tracks.csv").getInputStream(), StandardCharsets.UTF_8))) {
 
-            String header = reader.readLine(); // track_name,artist_name,tempo,energy,valence,danceability,acousticness,instrumentalness
+            String header = reader.readLine();
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] cols = splitCsvLine(line);
@@ -50,10 +39,20 @@ public class DatasetAudioFeatureService {
                     dto.setAcousticness(Double.parseDouble(cols[6]));
                     dto.setInstrumentalness(Double.parseDouble(cols[7]));
 
-                    String key = normalizedKey(cols[0], cols[1]);
-                    byNormalizedKey.putIfAbsent(key, dto);
+                    String normName = normalizeName(cols[0]);
+                    String normArtist = normalizePrimaryArtist(cols[1]);
+
+                    byNameAndArtist.putIfAbsent(normName + "|" + normArtist, dto);
+
+                    if (normName.length() >= 4) {
+                        if (byNameOnly.containsKey(normName)) {
+                            nameOnlyCollisionCount.merge(normName, 1, Integer::sum);
+                        } else {
+                            byNameOnly.put(normName, dto);
+                            nameOnlyCollisionCount.put(normName, 1);
+                        }
+                    }
                 } catch (NumberFormatException ignored) {
-                    // skip malformed rows rather than failing the whole load
                 }
             }
         } catch (IOException e) {
@@ -62,28 +61,47 @@ public class DatasetAudioFeatureService {
     }
 
     public AudioFeaturesDTO lookup(String trackName, String artistName) {
-        return byNormalizedKey.get(normalizedKey(trackName, artistName));
+        String normName = normalizeName(trackName);
+        String normArtist = normalizePrimaryArtist(artistName);
+
+        AudioFeaturesDTO exact = byNameAndArtist.get(normName + "|" + normArtist);
+        if (exact != null) return exact;
+
+        if (normName.length() >= 4 && nameOnlyCollisionCount.getOrDefault(normName, 0) == 1) {
+            return byNameOnly.get(normName);
+        }
+
+        return null;
     }
 
     public int datasetSize() {
-        return byNormalizedKey.size();
+        return byNameAndArtist.size();
     }
 
-    private String normalizedKey(String trackName, String artistName) {
-        return normalize(trackName) + "|" + normalize(artistName);
+    private String normalizeName(String trackName) {
+        if (trackName == null) return "";
+        String s = trackName.toLowerCase();
+        s = s.replaceAll("\\(.*?\\)", " ");
+        s = s.replaceAll("\\[.*?\\]", " ");
+        s = s.replaceAll("\\s*-\\s*(remix|live|acoustic|remastered|mono|stereo|radio edit|single version|album version|extended|instrumental|edit)\\b.*", " ");
+        s = s.replaceAll("[^a-z0-9 ]", " ");
+        s = s.trim().replaceAll("\\s+", " ");
+        return s;
     }
 
-    private String normalize(String s) {
-        if (s == null) return "";
-        return s.toLowerCase()
-                .replaceAll("\\(.*?\\)", "")   // drop "(feat. X)", "(Remastered)", etc.
-                .replaceAll("[^a-z0-9 ]", "")
-                .trim()
-                .replaceAll("\\s+", " ");
+    private String normalizePrimaryArtist(String artistName) {
+        if (artistName == null) return "";
+        String s = artistName.toLowerCase();
+        s = s.split(",")[0];
+        s = s.split("&")[0];
+        s = s.split("\\bfeat\\.?\\b")[0];
+        s = s.split("\\bft\\.?\\b")[0];
+        s = s.split("\\bwith\\b")[0];
+        s = s.replaceAll("[^a-z0-9 ]", " ");
+        s = s.trim().replaceAll("\\s+", " ");
+        return s;
     }
 
-    // Minimal CSV line splitter handling quoted fields with embedded commas,
-    // since track/album titles frequently contain commas and quotes.
     private String[] splitCsvLine(String line) {
         java.util.List<String> fields = new java.util.ArrayList<>();
         StringBuilder current = new StringBuilder();
