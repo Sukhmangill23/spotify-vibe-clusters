@@ -75,9 +75,12 @@ public class SpotifyClientService {
     }
 
     /**
-     * Fetches audio features for the given track IDs, chunking requests into
-     * groups of AUDIO_FEATURES_BATCH_SIZE so N tracks costs
-     * ceil(N / 100) calls instead of N calls.
+     * NOTE: Spotify deprecated this endpoint for all apps created after
+     * November 27, 2024 — it now returns a permanent 403 with no official
+     * replacement. Left in place (unused by IngestionService) as a record of
+     * the original design; see DatasetAudioFeatureService for the current
+     * approach. Batches requests into groups of AUDIO_FEATURES_BATCH_SIZE,
+     * which would still cut call volume by ~99% if Spotify ever restores it.
      */
     public List<AudioFeaturesDTO> fetchAudioFeaturesBatched(User user, List<String> trackIds) {
         List<AudioFeaturesDTO> results = new ArrayList<>();

@@ -7,41 +7,41 @@ import com.svc.entity.User;
 import com.svc.repository.TrackRepository;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
- * Pulls a user's library from Spotify and persists tracks + audio features.
- * Tracks how many audio-feature API calls batching saved, since that number
- * feeds directly into the resume metric for this project.
+ * Pulls a user's library from Spotify (this part still works — only the
+ * audio-features endpoint was deprecated) and enriches each track with
+ * audio features via DatasetAudioFeatureService instead of Spotify's
+ * /audio-features endpoint, which returns a permanent 403 for any app
+ * created after November 27, 2024.
+ *
+ * Tracks a real match-rate metric (how many of the user's saved tracks were
+ * found in the dataset) rather than assuming full coverage, since a
+ * name+artist fuzzy join will legitimately miss some tracks.
  */
 @Service
 public class IngestionService {
 
     private final SpotifyClientService spotifyClientService;
     private final TrackRepository trackRepository;
+    private final DatasetAudioFeatureService datasetAudioFeatureService;
 
-    public IngestionService(SpotifyClientService spotifyClientService, TrackRepository trackRepository) {
+    public IngestionService(SpotifyClientService spotifyClientService,
+                             TrackRepository trackRepository,
+                             DatasetAudioFeatureService datasetAudioFeatureService) {
         this.spotifyClientService = spotifyClientService;
         this.trackRepository = trackRepository;
+        this.datasetAudioFeatureService = datasetAudioFeatureService;
     }
 
     public IngestionResult ingest(User user) {
         List<SpotifyTrackDTO> savedTracks = spotifyClientService.fetchSavedTracks(user);
-        List<String> trackIds = savedTracks.stream().map(SpotifyTrackDTO::getId).collect(Collectors.toList());
 
-        List<AudioFeaturesDTO> features = spotifyClientService.fetchAudioFeaturesBatched(user, trackIds);
-        Map<String, AudioFeaturesDTO> featuresById = new HashMap<>();
-        for (AudioFeaturesDTO f : features) {
-            featuresById.put(f.getId(), f);
-        }
-
-        int savedCount = 0;
+        int matchedCount = 0;
         for (SpotifyTrackDTO dto : savedTracks) {
-            AudioFeaturesDTO f = featuresById.get(dto.getId());
-            if (f == null) continue; // some tracks (podcasts, local files) have no audio features
+            AudioFeaturesDTO f = datasetAudioFeatureService.lookup(dto.getName(), dto.getArtist());
+            if (f == null) continue; // track not found in the public dataset; skip rather than fabricate features
 
             Track track = trackRepository.findBySpotifyTrackIdAndOwnerId(dto.getId(), user.getSpotifyId())
                     .orElse(new Track(dto.getId(), user.getSpotifyId(), dto.getName(), dto.getArtist()));
@@ -54,18 +54,17 @@ public class IngestionService {
             track.setInstrumentalness(f.getInstrumentalness());
 
             trackRepository.save(track);
-            savedCount++;
+            matchedCount++;
         }
 
-        int actualCalls = spotifyClientService.batchCallCount(trackIds.size());
-        int unbatchedCalls = trackIds.size(); // one call per track if we hadn't batched
-        double reductionPct = unbatchedCalls == 0 ? 0
-                : (1 - (actualCalls / (double) unbatchedCalls)) * 100;
+        double matchRatePct = savedTracks.isEmpty() ? 0
+                : (matchedCount / (double) savedTracks.size()) * 100;
 
-        return new IngestionResult(savedCount, actualCalls, unbatchedCalls, reductionPct);
+        return new IngestionResult(savedTracks.size(), matchedCount, matchRatePct,
+                datasetAudioFeatureService.datasetSize());
     }
 
-    public record IngestionResult(int tracksIngested, int actualApiCalls, int unbatchedApiCalls,
-                                   double apiCallReductionPct) {
+    public record IngestionResult(int tracksInLibrary, int tracksMatched, double matchRatePct,
+                                   int datasetSize) {
     }
 }
