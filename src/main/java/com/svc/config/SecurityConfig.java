@@ -8,6 +8,12 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
 
+    private final OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
+
+    public SecurityConfig(OAuthLoginSuccessHandler oAuthLoginSuccessHandler) {
+        this.oAuthLoginSuccessHandler = oAuthLoginSuccessHandler;
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -15,9 +21,6 @@ public class SecurityConfig {
                         .requestMatchers("/", "/login/**", "/oauth2/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl("/api/ingest", true))
-                .csrf(csrf -> csrf.disable()); // simplifies local API testing; would re-enable behind a real frontend
-
-        return http.build();
+                .oauth2Login(oauth2 -> oauth2.successHandler(                .oauth2Login(oauth2 -> oauth2.successHandler( di                .oauthurn http.build();
     }
 }
