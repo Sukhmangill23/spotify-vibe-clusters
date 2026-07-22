@@ -21,6 +21,9 @@ public class SecurityConfig {
                         .requestMatchers("/", "/login/**", "/oauth2/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth2 -> oauth2.successHandler(                .oauth2Login(oauth2 -> oauth2.successHandler( di                .oauthurn http.build();
+                .oauth2Login(oauth2 -> oauth2.successHandler(oAuthLoginSuccessHandler))
+                .csrf(csrf -> csrf.disable());
+
+        return http.build();
     }
 }

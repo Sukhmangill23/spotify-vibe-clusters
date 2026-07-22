@@ -21,11 +21,45 @@ import java.time.Instant;
 @Component
 public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    p    pe final UserRepository userRepository;
-    priva    priva    priva    priva    priva    ut    priva    priva    priva    privauthLo    priva    priva    priva    priva    priva y,    priva    priva    priva    priva    privautho    priva    priva    priva    priva    priva    ut   thi    priva    priva    priva    priva    priva    ut    priva    priva   =     priva    priva    priva    priva    priva    ut    priva    priva    prionSuc    priva    priva    priva    priva    priva    ut    priva    priva    priva    privauth      priva    priva    priva    priva    priva    ut    priva   Serv    priva    priva    priva    priva    priva    ut    priva    pruth2AuthenticationToken) authentication;
-        OAuth2User oauth2U        OAuth2User oauth2U        OAuth2User oauth2U        OAuth2User oauth2U    
-                                                  au                         dAuthorizedClient(
-                    hT                    hT                    hT                    hT             us                    hT                    hT e(ne                    hT                    hT                    hT                    hT             us                    hT                    hT e(ne                    hT                    hT                    hT                    hT             us                    hT                    hT e(ne                    hT                    hT                    hT                    hT             us                    hT                    hT e(ne                    hT                    hT                    hT                    hT             us                    hT                    hT e(ne                    hT                    hT                                   hT                    hT                    hT                    hT             us    sitory.save(user);
+    private final UserRepository userRepository;
+    private final OAuth2AuthorizedClientService authorizedClientService;
+
+    public OAuthLoginSuccessHandler(UserRepository userRepository,
+                                     OAuth2AuthorizedClientService authorizedClientService) {
+        this.userRepository = userRepository;
+        this.authorizedClientService = authorizedClientService;
+    }
+
+    @Override
+    public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
+                                         Authentication authentication) throws IOException, ServletException {
+
+        OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
+        OAuth2User oauth2User = oauthToken.getPrincipal();
+        String spotifyId = oauth2User.getName();
+
+        OAuth2AuthorizedClient authorizedClient = authorizedClientService.loadAuthorizedClient(
+                oauthToken.getAuthorizedClientRegistrationId(), oauthToken.getName());
+
+        User user = userRepository.findById(spotifyId).orElse(new User(
+                spotifyId,
+                (String) oauth2User.getAttributes().getOrDefault("display_name", spotifyId),
+                (String) oauth2User.getAttributes().get("email")
+        ));
+
+        if (authorizedClient != null) {
+            OAuth2AccessToken accessToken = authorizedClient.getAccessToken();
+            user.setAccessToken(accessToken.getTokenValue());
+            user.setTokenExpiresAt(accessToken.getExpiresAt() != null
+                    ? accessToken.getExpiresAt() : Instant.now().plusSeconds(3600));
+
+            OAuth2RefreshToken refreshToken = authorizedClient.getRefreshToken();
+            if (refreshToken != null) {
+                user.setRefreshToken(refreshToken.getTokenValue());
+            }
+        }
+
+        userRepository.save(user);
 
         response.sendRedirect("/api/ingest");
     }
