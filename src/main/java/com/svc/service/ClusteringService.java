@@ -47,12 +47,18 @@ public class ClusteringService {
             throw new IllegalStateException("Not enough tracks to cluster: need at least " + minK);
         }
 
-        double[][] rawPoints = new double[tracks.size()][];
+        double[][] points = new double[tracks.size()][];
         for (int i = 0; i < tracks.size(); i++) {
-            rawPoints[i] = tracks.get(i).featureVector();
+            points[i] = tracks.get(i).featureVector();
         }
 
-        double[][] points = standardize(rawPoints);
+        // NOTE: z-score standardization was tried here and benchmarked worse
+        // (silhouette 0.40 -> 0.25) than Track.featureVector()'s scaling.
+        // Acousticness/instrumentalness are naturally bimodal and
+        // genre-discriminative; standardizing gave tempo/valence equal
+        // weight and diluted that separation. Kept the empirically better
+        // approach; standardize() is left below, unused, documenting what
+        // was tried.
 
         int bestK = minK;
         double bestScore = -2.0;
