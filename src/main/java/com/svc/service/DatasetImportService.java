@@ -1,6 +1,8 @@
 package com.svc.service;
 
 import com.svc.entity.Track;
+import com.svc.repository.ClusterRepository;
+import com.svc.repository.TrackClusterAssignmentRepository;
 import com.svc.repository.TrackRepository;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -19,13 +21,21 @@ public class DatasetImportService {
     public static final String DEMO_OWNER_ID = "dataset-demo";
 
     private final TrackRepository trackRepository;
+    private final TrackClusterAssignmentRepository assignmentRepository;
+    private final ClusterRepository clusterRepository;
 
-    public DatasetImportService(TrackRepository trackRepository) {
+    public DatasetImportService(TrackRepository trackRepository,
+                                 TrackClusterAssignmentRepository assignmentRepository,
+                                 ClusterRepository clusterRepository) {
         this.trackRepository = trackRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.clusterRepository = clusterRepository;
     }
 
     @Transactional
     public ImportResult importSample(int limit) {
+        assignmentRepository.deleteByTrack_OwnerId(DEMO_OWNER_ID);
+        clusterRepository.deleteByOwnerId(DEMO_OWNER_ID);
         trackRepository.deleteByOwnerId(DEMO_OWNER_ID);
 
         List<Track> tracks = new ArrayList<>();
