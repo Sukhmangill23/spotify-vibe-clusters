@@ -12,15 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
-/**
- * From-scratch k-means clustering over track audio-feature vectors, with the
- * cluster count (k) chosen by trying a range of values and picking the one
- * with the best silhouette score (see SilhouetteScorer).
- */
 @Service
 public class ClusteringService {
 
     private static final int MAX_ITERATIONS = 100;
+    private static final int NUM_RESTARTS = 8;
     private static final long RANDOM_SEED = 42L;
 
     @Value("${vibeclusters.clustering.min-k:4}")
@@ -57,7 +53,7 @@ public class ClusteringService {
         }
 
         int bestK = minK;
-        double bestScore = -2.0; // silhouette score ranges [-1, 1]
+        double bestScore = -2.0;
         int[] bestLabels = null;
         double[][] bestCentroids = null;
 
@@ -72,7 +68,6 @@ public class ClusteringService {
             }
         }
 
-        // Persist: wipe old clusters/assignments for this user, write the new ones
         assignmentRepository.deleteByTrack_OwnerId(ownerId);
         clusterRepository.deleteByOwnerId(ownerId);
 
@@ -89,28 +84,33 @@ public class ClusteringService {
     }
 
     private KMeansResult runKMeans(double[][] points, int k) {
-        Random random = new Random(RANDOM_SEED);
+        KMeansResult best = null;
+        double bestInertia = Double.MAX_VALUE;
+
+        for (int restart = 0; restart < NUM_RESTARTS; restart++) {
+            Random random = new Random(RANDOM_SEED + restart);
+            KMeansResult result = runSingleKMeans(points, k, random);
+            double inertia = computeInertia(points, result.labels, result.centroids);
+
+            if (inertia < bestInertia) {
+                bestInertia = inertia;
+                best = result;
+            }
+        }
+
+        return best;
+    }
+
+    private KMeansResult runSingleKMeans(double[][] points, int k, Random random) {
         int n = points.length;
         int dims = points[0].length;
 
-        // k-means++ style seeding would be nicer, but random init with enough
-        // iterations converges fine at this dataset size
-        double[][] centroids = new double[k][];
-        Set<Integer> chosen = new HashSet<>();
-        while (chosen.size() < k) {
-            chosen.add(random.nextInt(n));
-        }
-        int idx = 0;
-        for (int i : chosen) {
-            centroids[idx++] = points[i].clone();
-        }
-
+        double[][] centroids = initCentroidsPlusPlus(points, k, random);
         int[] labels = new int[n];
 
         for (int iter = 0; iter < MAX_ITERATIONS; iter++) {
             boolean changed = false;
 
-            // Assignment step
             for (int i = 0; i < n; i++) {
                 int closest = 0;
                 double closestDist = Double.MAX_VALUE;
@@ -129,7 +129,6 @@ public class ClusteringService {
 
             if (!changed && iter > 0) break;
 
-            // Update step
             double[][] sums = new double[k][dims];
             int[] counts = new int[k];
             for (int i = 0; i < n; i++) {
@@ -140,7 +139,7 @@ public class ClusteringService {
                 }
             }
             for (int c = 0; c < k; c++) {
-                if (counts[c] == 0) continue; // keep previous centroid if a cluster went empty
+                if (counts[c] == 0) continue;
                 for (int d = 0; d < dims; d++) {
                     centroids[c][d] = sums[c][d] / counts[c];
                 }
@@ -148,6 +147,51 @@ public class ClusteringService {
         }
 
         return new KMeansResult(labels, centroids);
+    }
+
+    private double[][] initCentroidsPlusPlus(double[][] points, int k, Random random) {
+        int n = points.length;
+        double[][] centroids = new double[k][];
+
+        centroids[0] = points[random.nextInt(n)].clone();
+
+        double[] minDistSq = new double[n];
+        for (int i = 0; i < n; i++) {
+            minDistSq[i] = squaredEuclidean(points[i], centroids[0]);
+        }
+
+        for (int c = 1; c < k; c++) {
+            double totalDist = 0;
+            for (double d : minDistSq) totalDist += d;
+
+            double target = random.nextDouble() * totalDist;
+            double cumulative = 0;
+            int chosenIndex = n - 1;
+            for (int i = 0; i < n; i++) {
+                cumulative += minDistSq[i];
+                if (cumulative >= target) {
+                    chosenIndex = i;
+                    break;
+                }
+            }
+
+            centroids[c] = points[chosenIndex].clone();
+
+            for (int i = 0; i < n; i++) {
+                double d = squaredEuclidean(points[i], centroids[c]);
+                if (d < minDistSq[i]) minDistSq[i] = d;
+            }
+        }
+
+        return centroids;
+    }
+
+    private double computeInertia(double[][] points, int[] labels, double[][] centroids) {
+        double sum = 0;
+        for (int i = 0; i < points.length; i++) {
+            sum += squaredEuclidean(points[i], centroids[labels[i]]);
+        }
+        return sum;
     }
 
     private double squaredEuclidean(double[] a, double[] b) {

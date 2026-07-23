@@ -36,7 +36,7 @@ public class DemoController {
     }
 
     @RequestMapping(value = "/import", method = {RequestMethod.GET, RequestMethod.POST})
-    public com.svc.service.ImportResult importSample(@RequestParam(defaultValue = "5000") int limit) {
+ public DatasetImportService.ImportResult importSample(@RequestParam(defaultValue = "5000") int limit) {
         return datasetImportService.importSample(limit);
     }
 
