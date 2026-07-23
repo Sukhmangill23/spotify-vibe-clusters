@@ -47,10 +47,12 @@ public class ClusteringService {
             throw new IllegalStateException("Not enough tracks to cluster: need at least " + minK);
         }
 
-        double[][] points = new double[tracks.size()][];
+        double[][] rawPoints = new double[tracks.size()][];
         for (int i = 0; i < tracks.size(); i++) {
-            points[i] = tracks.get(i).featureVector();
+            rawPoints[i] = tracks.get(i).featureVector();
         }
+
+        double[][] points = standardize(rawPoints);
 
         int bestK = minK;
         double bestScore = -2.0;
@@ -192,6 +194,37 @@ public class ClusteringService {
             sum += squaredEuclidean(points[i], centroids[labels[i]]);
         }
         return sum;
+    }
+
+    private double[][] standardize(double[][] points) {
+        int n = points.length;
+        int dims = points[0].length;
+
+        double[] mean = new double[dims];
+        for (double[] p : points) {
+            for (int d = 0; d < dims; d++) mean[d] += p[d];
+        }
+        for (int d = 0; d < dims; d++) mean[d] /= n;
+
+        double[] std = new double[dims];
+        for (double[] p : points) {
+            for (int d = 0; d < dims; d++) {
+                double diff = p[d] - mean[d];
+                std[d] += diff * diff;
+            }
+        }
+        for (int d = 0; d < dims; d++) {
+            std[d] = Math.sqrt(std[d] / n);
+            if (std[d] < 1e-9) std[d] = 1.0;
+        }
+
+        double[][] standardized = new double[n][dims];
+        for (int i = 0; i < n; i++) {
+            for (int d = 0; d < dims; d++) {
+                standardized[i][d] = (points[i][d] - mean[d]) / std[d];
+            }
+        }
+        return standardized;
     }
 
     private double squaredEuclidean(double[] a, double[] b) {
